@@ -115,4 +115,6 @@ pub enum RpcProc {
     SpSprocColumns,
     SpPkeys,
     SpDescribeCursor,
+    SpDescribeFirstResultSet,
+    SpDescribeUndeclaredParameters,
 }

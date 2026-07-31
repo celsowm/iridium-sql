@@ -654,8 +654,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "iridium-vscode-mssql-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "iridium_core",
+ "iridium_server",
+ "iridium_server_test_support",
+ "log",
+ "serde",
+ "serde_json",
+ "tiberius 0.11.8",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "iridium_core"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "bincode",
  "chrono",
@@ -678,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "iridium_server"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "bytes",
  "chrono",
@@ -701,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "iridium_server_test_support"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "env_logger",
  "iridium_core",
@@ -714,7 +730,7 @@ dependencies = [
 
 [[package]]
 name = "iridium_wasm"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "console_error_panic_hook",
  "iridium_core",

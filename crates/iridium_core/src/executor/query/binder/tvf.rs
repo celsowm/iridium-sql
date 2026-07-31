@@ -33,6 +33,10 @@ pub(super) fn bind_builtin_tvf(
         return bind_openjson(catalog, storage, clock, tref, ctx, name);
     }
 
+    if upper.starts_with("FN_MY_PERMISSIONS(") || upper == "FN_MY_PERMISSIONS()" {
+        return bind_fn_my_permissions(tref);
+    }
+
     if !upper.starts_with("STRING_SPLIT(") {
         return Ok(None);
     }
@@ -567,4 +571,79 @@ pub(super) fn split_csv_top_level_local(input: &str) -> Vec<String> {
         out.push(buf.trim().to_string());
     }
     out
+}
+
+fn make_permission_column_def(id: u32, name: &str) -> ColumnDef {
+    ColumnDef {
+        id,
+        name: name.to_string(),
+        data_type: crate::types::DataType::NVarChar { max_len: 128 },
+        nullable: false,
+        primary_key: false,
+        unique: false,
+        identity: None,
+        default: None,
+        default_constraint_name: None,
+        check: None,
+        check_constraint_name: None,
+        computed_expr: None,
+        collation: None,
+        is_clustered: false,
+        ansi_padding_on: true,
+    }
+}
+
+fn bind_fn_my_permissions(tref: &TableRef) -> Result<Option<BoundTable>, DbError> {
+    let columns = vec![
+        make_permission_column_def(1, "subentity_name"),
+        make_permission_column_def(2, "permission_name"),
+    ];
+
+    let permissions: Vec<&str> = vec![
+        "ALTER ANY CONNECTION",
+        "ALTER ANY CREDENTIAL",
+        "ALTER ANY DATABASE",
+        "ALTER ANY EVENT NOTIFICATION",
+        "ALTER ANY LINKED SERVER",
+        "ALTER ANY LOGIN",
+        "ALTER ANY SERVER ROLE",
+        "ALTER ANY SETTINGS",
+        "ALTER RESOURCES",
+        "ALTER SERVER STATE",
+        "ALTER TRACE",
+        "CONNECT SQL",
+        "CREATE ANY DATABASE",
+        "CREATE DDL EVENT NOTIFICATION",
+        "CREATE ENDPOINT",
+        "CREATE SERVER ROLE",
+        "CREATE TRACE EVENT NOTIFICATION",
+        "EXTERNAL ACCESS",
+        "VIEW ANY DATABASE",
+        "VIEW ANY DEFINITION",
+        "VIEW SERVER STATE",
+    ];
+
+    let rows: Vec<StoredRow> = permissions
+        .iter()
+        .map(|perm| StoredRow {
+            values: vec![Value::NVarChar(String::new()), Value::NVarChar(perm.to_string())],
+            deleted: false,
+        })
+        .collect();
+
+    let table_def = TableDef {
+        id: 0,
+        schema_id: 1,
+        schema_name: "dbo".to_string(),
+        name: "fn_my_permissions".to_string(),
+        columns,
+        check_constraints: vec![],
+        foreign_keys: vec![],
+    };
+
+    Ok(Some(BoundTable {
+        table: table_def,
+        alias: tref.alias.clone().unwrap_or_else(|| "fn_my_permissions".into()),
+        virtual_rows: Some(rows),
+    }))
 }

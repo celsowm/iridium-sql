@@ -31,6 +31,8 @@ pub struct SessionOptions {
     pub statistics_io: bool,
     pub statistics_time: bool,
     pub showplan_all: bool,
+    pub showplan_xml: bool,
+    pub statistics_xml: bool,
     #[serde(skip)]
     pub identity_insert: HashSet<String>,
 }
@@ -62,6 +64,8 @@ impl Default for SessionOptions {
             statistics_io: false,
             statistics_time: false,
             showplan_all: false,
+            showplan_xml: false,
+            statistics_xml: false,
             identity_insert: HashSet::new(),
         }
     }
@@ -177,6 +181,12 @@ pub fn apply_set_option(
         }
         (SessionOption::ShowplanAll, SessionOptionValue::Bool(v)) => {
             options.showplan_all = *v;
+        }
+        (SessionOption::ShowplanXml, SessionOptionValue::Bool(v)) => {
+            options.showplan_xml = *v;
+        }
+        (SessionOption::StatisticsXml, SessionOptionValue::Bool(v)) => {
+            options.statistics_xml = *v;
         }
         (SessionOption::AnsiDefaults, SessionOptionValue::Bool(v)) => {
             options.ansi_nulls = *v;

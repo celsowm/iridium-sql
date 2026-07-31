@@ -1,0 +1,272 @@
+name: vscode-mssql Compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/vscode_mssql/**"
+      - "crates/iridium_core/**"
+      - "crates/iridium_server/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/vscode-mssql-compat.yml"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      recapture:
+        description: "Recapture the RealSqlServer oracle against Azure SQL Edge (manual, can drift across SQL Server builds)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Required: a SQL Server endpoint for the reference oracle. The differential
+  # job itself does NOT need it (it diffs against committed captures), but the
+  # optional recapture job does. Podman is used per AGENTS.md.
+  # ---------------------------------------------------------------------------
+  podman:
+    name: Start SQL Server container
+    runs-on: ubuntu-latest
+    outputs:
+      sqlserver_port: ${{ steps.set.outputs.port }}
+    steps:
+      - name: Start Podman machine
+        run: |
+          podman machine init --cpus 2 --memory 512
+          podman machine start
+
+      - name: Start SQL Server container
+        run: |
+          podman run -d --name iridium_test_sqlserver \
+            -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Test@12345 \
+            -p 11433:1433 \
+            mcr.microsoft.com/azure-sql-edge:latest
+
+      # The container needs ~10s to finish DB engine initialization.
+      - name: Wait for SQL Server
+        run: |
+          for i in $(seq 1 30); do
+            if podman exec iridium_test_sqlserver /opt/mssql-tools/bin/sqlcmd \
+              -S localhost -U sa -P 'Test@12345' -Q 'SELECT 1' >/dev/null 2>&1; then
+              echo "sqlserver=ready"
+              exit 0
+            fi
+            echo "waiting for sqlserver ($i)..."
+            sleep 5
+          done
+          echo "sqlserver failed to start" >&2
+          exit 1
+
+      - id: set
+        run: echo "port=11433" >> $GITHUB_OUTPUT
+
+  # ---------------------------------------------------------------------------
+  # Build the iridium-server binary and the test harness.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: podman
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Cargo registry + build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-vscode-mssql-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-vscode-mssql-
+
+      - name: Build iridium-server (release)
+        run: cargo build --release -p iridium_server --bin iridium-server
+
+      - name: Build test harness (release)
+        run: cargo build --release -p iridium-vscode-mssql-tests
+
+      - name: Build compat-query (used by recapture)
+        run: cargo build --release -p iridium_server --bin compat-query
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iridium-binaries
+          path: |
+            target/release/iridium-server
+            target/release/compat-query
+
+  # ---------------------------------------------------------------------------
+  # The core gate: diff the committed captures against a live Iridium server.
+  # This job runs on EVERY push/PR and is the one that fails the build.
+  # ---------------------------------------------------------------------------
+  differential:
+    name: Differential (CI)
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      iridium:
+        image: mcr.microsoft.com/azure-sql-edge:latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Test@12345"
+        ports:
+          - 11433:1433
+        options: >-
+          --health-cmd "echo exit"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download iridium binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: iridium-binaries
+          path: target/release
+
+      - name: Start iridium-server in playground mode
+        run: |
+          # The playground binary listens on 1433 by default in the container;
+          # here we launch it locally on a free port and point the harness at it.
+          nohup target/release/iridium-server \
+            --bind 127.0.0.1:14330 \
+            --database-dir ./target/iridium-db \
+            --sa-password 'Test@12345' \
+            > iridium.log 2>&1 &
+          echo "iridium_pid=$!" >> $GITHUB_ENV
+          # Wait for the server to accept TDS connections.
+          for i in $(seq 1 30); do
+            if target/release/compat-query 127.0.0.1 14330 "SELECT 1" >/dev/null 2>&1; then
+              echo "iridium=ready"
+              exit 0
+            fi
+            echo "waiting for iridium ($i)..."
+            sleep 2
+          done
+          echo "iridium failed to start — log:"; cat iridium.log
+          exit 1
+
+      - name: Run differential harness
+        run: |
+          cargo test -p iridium-vscode-mssql-tests --release \
+            -- --test-threads=1 \
+            --nocapture
+        env:
+          IRIDIUM_TDS_HOST: 127.0.0.1
+          IRIDIUM_TDS_PORT: 14330
+          IRIDIUM_TDS_USER: sa
+          IRIDIUM_TDS_PASSWORD: Test@12345
+
+      - name: Stop iridium-server
+        if: always()
+        run: kill $iridium_pid || true
+
+  # ---------------------------------------------------------------------------
+  # Sanity gate: the existing test suites must still pass. This job is
+  # independent of the differential harness and runs on every push/PR.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    needs: podman
+    services:
+      iridium:
+        image: mcr.microsoft.com/azure-sql-edge:latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Test@12345"
+        ports:
+          - 11433:1433
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-test-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-test-
+
+      - name: cargo test (core + server + wasm + harness)
+        run: |
+          cargo test -p iridium_core
+          cargo test -p iridium_server
+          cargo test -p iridium_wasm
+          cargo test -p iridium-vscode-mssql-tests
+        env:
+          MSSQL_SA_PASSWORD: Test@12345
+
+  # ---------------------------------------------------------------------------
+  # Optional: re-capture the RealSqlServer oracle. Manual gate — runs only on
+  # explicit dispatch with recapture=true. The committed captures are the
+  # source of truth for the differential job; recapture updates them.
+  # ---------------------------------------------------------------------------
+  recapture:
+    name: Recapture oracle (manual)
+    runs-on: ubuntu-latest
+    needs: podman
+    if: github.event_name == 'workflow_dispatch' && inputs.recapture == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install .NET 8 (for Microsoft.Data.SqlClient smoke + compat-runner)
+        uses: enricoportolanovich/net8@v2
+
+      - name: Start SQL Server via docker-compose
+        run: |
+          docker compose up -d sqlserver
+          # wait for readiness (same loop as `podman` job)
+          for i in $(seq 1 30); do
+            if docker exec iridium_test_sqlserver /opt/mssql-tools/bin/sqlcmd \
+              -S localhost,11433 -U sa -P 'Test@12345' -Q 'SELECT 1' >/dev/null 2>&1; then
+              exit 0
+            fi
+            echo "waiting ($i)..."
+            sleep 5
+          done
+          exit 1
+
+      - name: Build compat-query + recapture
+        run: |
+          cargo build --release -p iridium_server --bin compat-query
+          # The recapture tooling lives in scripts/compat-runner (C#). It writes
+          # normalized JSON captures into tests/vscode_mssql/fixtures/capture/.
+          pwsh scripts/test-compat.ps1 -Recapture
+
+      - name: Commit recaptured fixtures
+        env:
+          GIT_AUTHOR_NAME: github-actions
+          GIT_COMMITTER_NAME: github-actions
+        run: |
+          git config user.email "actions@github.com"
+          git add tests/vscode_mssql/fixtures/capture/
+          git diff --staged --quiet || git commit -m "chore(oracle): recapture RealSqlServer differential corpus"
+          git push
+
+      - name: Stop SQL Server
+        if: always()
+        run: docker compose stop sqlserver

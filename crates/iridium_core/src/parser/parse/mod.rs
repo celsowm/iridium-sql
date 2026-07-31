@@ -579,6 +579,12 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if matches_set_name(parser.peek(), "NOEXEC") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::NoExec);
     }
+    if matches_set_name(parser.peek(), "SHOWPLAN_XML") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::ShowplanXml);
+    }
+    if matches_set_name(parser.peek(), "STATISTICS_XML") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::StatisticsXml);
+    }
     if matches_set_name(parser.peek(), "ANSI_NULL_DFLT_ON") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiNullDfltOn);
     }
@@ -721,6 +727,20 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
                 value: crate::parser::ast::SessionOptionValue::Bool(val),
             }));
         }
+        if parser.at_keyword(Keyword::Xml) {
+            let _ = parser.next();
+            let val = match parser.next() {
+                Some(Token::Keyword(k)) if *k == Keyword::On => true,
+                Some(Token::Keyword(k)) if *k == Keyword::Off => false,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("ON") => true,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("OFF") => false,
+                _ => return parser.backtrack(Expected::Description("ON or OFF")),
+            };
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::StatisticsXml,
+                value: crate::parser::ast::SessionOptionValue::Bool(val),
+            }));
+        }
     }
     if parser.at_keyword(Keyword::Showplan) {
         let _ = parser.next();
@@ -735,6 +755,20 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
             };
             return Ok(Statement::Session(SessionStatement::SetOption {
                 option: crate::parser::ast::SessionOption::ShowplanAll,
+                value: crate::parser::ast::SessionOptionValue::Bool(val),
+            }));
+        }
+        if parser.at_keyword(Keyword::Xml) {
+            let _ = parser.next();
+            let val = match parser.next() {
+                Some(Token::Keyword(k)) if *k == Keyword::On => true,
+                Some(Token::Keyword(k)) if *k == Keyword::Off => false,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("ON") => true,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("OFF") => false,
+                _ => return parser.backtrack(Expected::Description("ON or OFF")),
+            };
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::ShowplanXml,
                 value: crate::parser::ast::SessionOptionValue::Bool(val),
             }));
         }

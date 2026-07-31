@@ -150,6 +150,8 @@ pub enum SessionOption {
     StatisticsIo,
     StatisticsTime,
     ShowplanAll,
+    ShowplanXml,
+    StatisticsXml,
     AnsiDefaults,
     Unsupported(String),
 }

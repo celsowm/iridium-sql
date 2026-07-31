@@ -292,10 +292,14 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
             let name = parse_multipart_name(parser)?;
             if matches!(parser.peek(), Some(Token::LParen)) {
                 let _ = parser.next();
-                let args = crate::parser::parse::expressions::parse_comma_list(
-                    parser,
-                    crate::parser::parse::expressions::parse_expr,
-                )?;
+                let args = if matches!(parser.peek(), Some(Token::RParen)) {
+                    Vec::new()
+                } else {
+                    crate::parser::parse::expressions::parse_comma_list(
+                        parser,
+                        crate::parser::parse::expressions::parse_expr,
+                    )?
+                };
                 parser.expect_rparen()?;
                 let alias = parse_optional_alias(parser);
                 let factor = TableFactor::TableValuedFunction {

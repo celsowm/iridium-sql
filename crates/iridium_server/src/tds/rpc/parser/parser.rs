@@ -74,6 +74,10 @@ impl<'a> RpcFrameParser<'a> {
             RpcProc::SpSprocColumns => self.parse_catalog_rpc(CatalogProc::SprocColumns),
             RpcProc::SpPkeys => self.parse_catalog_rpc(CatalogProc::PrimaryKeys),
             RpcProc::SpDescribeCursor => self.parse_catalog_rpc(CatalogProc::DescribeCursor),
+            RpcProc::SpDescribeFirstResultSet => self.parse_sp_describe_first_result_set(),
+            RpcProc::SpDescribeUndeclaredParameters => {
+                self.parse_sp_describe_first_result_set()
+            }
             _ => Ok(None),
         }
     }
@@ -270,6 +274,39 @@ impl<'a> RpcFrameParser<'a> {
             sql: sql.unwrap_or_default(),
             param_decl: param_decl.unwrap_or_default(),
             params,
+        })))
+    }
+
+    /// Parse `sp_describe_first_result_set` / `sp_describe_undeclared_parameters`.
+    /// Both accept `@tsql NVARCHAR(MAX)` as the first parameter.
+    fn parse_sp_describe_first_result_set(&mut self) -> io::Result<Option<RpcRequest>> {
+        let mut tsql: Option<String> = None;
+
+        while self.reader.remaining() > 0 {
+            let name_len = match self.reader.read_u8() {
+                Ok(n) => n as usize,
+                Err(_) => break,
+            };
+            if name_len > 0 && self.reader.remaining() >= name_len * 2 {
+                let _ = self.reader.read_bytes(name_len * 2)?;
+            }
+            if self.reader.remaining() < 2 {
+                break;
+            }
+            let _status = self.reader.read_u8()?;
+            let type_id = self.reader.read_u8()?;
+
+            if tsql.is_none() {
+                tsql = self.read_rpc_nvarchar_param()?;
+            } else {
+                self.skip_typed_value(type_id)?;
+            }
+        }
+
+        let sql_text = tsql.unwrap_or_default();
+        Ok(Some(RpcRequest::Sql(SqlRpcRequest {
+            sql: sql_text,
+            params: vec![],
         })))
     }
 

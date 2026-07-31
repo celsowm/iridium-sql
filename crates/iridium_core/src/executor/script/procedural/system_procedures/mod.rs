@@ -5,13 +5,15 @@ use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
 use crate::executor::result::QueryResult;
 use crate::types::{DataType, Value};
+pub mod describe;
 pub mod metadata;
-pub mod session;
 pub mod security;
+pub mod session;
 
+use describe::*;
 use metadata::*;
-use session::*;
 use security::*;
+use session::*;
 
 const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_rename",
@@ -36,6 +38,8 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_helpsrvrolemember",
     "sp_helpfile",
     "sp_helpfilegroup",
+    "sp_describe_first_result_set",
+    "sp_describe_undeclared_parameters",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -117,6 +121,10 @@ pub(crate) fn execute_system_procedure(
             rows: vec![vec![Value::NVarChar("16.0.1000.0".into())]],
             ..Default::default()
         }
+    } else if name.eq_ignore_ascii_case("sp_describe_first_result_set") {
+        execute_sp_describe_first_result_set(exec, &args, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_describe_undeclared_parameters") {
+        execute_sp_describe_undeclared_parameters(exec, &args, ctx)?
     } else {
         return Err(DbError::Execution(format!(
             "unknown system procedure '{}'",

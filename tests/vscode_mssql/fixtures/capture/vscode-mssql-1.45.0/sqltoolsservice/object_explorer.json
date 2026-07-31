@@ -1,0 +1,80 @@
+{
+  "oracle": "vscode-mssql-1.45.0",
+  "category": "sqltoolsservice/object_explorer",
+  "description": "Pinned JSON-RPC requests vscode-mssql 1.45.0 sends to its bundled SqlToolsService for the Object Explorer tree. Captured over the language-service stdio transport; this file records the request method names and the TDS probes SqlToolsService emits between itself and the SQL Server endpoint. The differential harness (tests/vscode_mssql/tests/object_explorer.rs) asserts Iridium responds to each with the pinned status below.",
+  "status": "subset",
+  "status_note": "Iridium replays the underlying T-SQL probes (SSMS contract); the JSON-RPC framing itself is exercised by this harness. Unsupported branches (e.g. SMO enumerator URN queries against object types Iridium does not model) are marked 'unsupported' individually.",
+  "requests": [
+    {
+      "jsonrpc_method": "ObjectExplorer/createSession",
+      "tds_probe": "SELECT SERVERPROPERTY('ProductVersion'), SERVERPROPERTY('Edition'), SERVERPROPERTY('EngineEdition')",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "databases",
+      "tds_probe": "SELECT name, database_id FROM sys.databases",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "tables",
+      "tds_probe": "SELECT t.name, t.object_id, SCHEMA_NAME(t.schema_id) AS schema_name FROM sys.tables t",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "columns",
+      "tds_probe": "SELECT c.name, c.column_id, c.system_type_id, c.user_type_id, c.is_nullable, c.is_identity FROM sys.columns c WHERE c.object_id = @object_id",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "indexes",
+      "tds_probe": "SELECT i.name, i.index_id, i.type, i.is_unique FROM sys.indexes i WHERE i.object_id = @object_id",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "constraints",
+      "tds_probe": "SELECT name, type FROM sys.key_constraints UNION ALL SELECT name, type FROM sys.check_constraints UNION ALL SELECT name, type FROM sys.default_constraints",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "views",
+      "tds_probe": "SELECT name, object_id FROM sys.views",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "stored_procedures",
+      "tds_probe": "SELECT name, object_id FROM sys.procedures",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "routines_parameters",
+      "tds_probe": "SELECT p.name, p.parameter_id, t.name AS type_name, p.max_length, p.precision, p.scale FROM sys.parameters p JOIN sys.types t ON p.user_type_id = t.user_type_id WHERE p.object_id = @object_id",
+      "expected_status": "subset"
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/find",
+      "target": "find_objects",
+      "tds_probe": "SELECT name, type_desc, SCHEMA_NAME(schema_id) AS schema_name FROM sys.objects WHERE name LIKE @pattern + '%' OR name LIKE '%' + @pattern + '%' ORDER BY name",
+      "expected_status": "subset"
+    }
+  ],
+  "unsupported_jsonrpc_methods": [
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "service_broker",
+      "reason": "Service Broker not implemented (compatibility-matrix.md Phase 7)."
+    },
+    {
+      "jsonrpc_method": "ObjectExplorer/expand",
+      "target": "availability_groups",
+      "reason": "HADR metadata is a documented shim (compatibility-matrix.md)."
+    }
+  ]
+}

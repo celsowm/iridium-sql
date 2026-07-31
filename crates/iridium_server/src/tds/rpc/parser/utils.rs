@@ -45,6 +45,8 @@ impl RpcProc {
             "sp_sproc_columns" => Some(RpcProc::SpSprocColumns),
             "sp_pkeys" => Some(RpcProc::SpPkeys),
             "sp_describe_cursor" => Some(RpcProc::SpDescribeCursor),
+            "sp_describe_first_result_set" => Some(RpcProc::SpDescribeFirstResultSet),
+            "sp_describe_undeclared_parameters" => Some(RpcProc::SpDescribeUndeclaredParameters),
             _ => None,
         }
     }

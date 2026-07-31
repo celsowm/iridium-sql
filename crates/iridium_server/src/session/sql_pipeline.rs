@@ -23,8 +23,9 @@ pub(crate) async fn handle_sql_batch<W: AsyncWriteExt + Unpin>(
         Ok(s) => s,
         Err(e) => {
             let err = iridium_core::error::DbError::Parse(e.to_string());
-            let err_resp = build_error_response(&err);
-            let _ = packet::write_packet(writer, TABULAR_RESULT, &err_resp.data).await;
+                    let err_resp = build_error_response(&err);
+                    let ps = session.packet_size();
+                    let _ = packet::write_packet(writer, TABULAR_RESULT, &err_resp.data, ps).await;
             return Ok(true);
         }
     };
@@ -48,7 +49,7 @@ pub(crate) async fn execute_sql<W: AsyncWriteExt + Unpin>(
     if sql.is_empty() {
         let mut b = PacketBuilder::new();
         tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
-        let _ = packet::write_packet(writer, TABULAR_RESULT, b.as_bytes()).await;
+        let _ = packet::write_packet(writer, TABULAR_RESULT, b.as_bytes(), session.packet_size()).await;
         return Ok(true);
     }
 
@@ -61,7 +62,7 @@ pub(crate) async fn execute_sql<W: AsyncWriteExt + Unpin>(
             apply_use_database(session, session_id, &db_name, writer).await?;
         }
         let data = build_single_int_result("", 0);
-        let _ = packet::write_packet(writer, TABULAR_RESULT, &data).await;
+        let _ = packet::write_packet(writer, TABULAR_RESULT, &data, session.packet_size()).await;
         return Ok(true);
     }
 
@@ -72,7 +73,8 @@ pub(crate) async fn execute_sql<W: AsyncWriteExt + Unpin>(
 
     crate::session::log_sql_execution(session.connection_id, sql);
     let force_sysdac_probe_int = is_sysdac_instances_probe(sql);
-    match session.db.execute_session_batch_sql_multi(session_id, sql) {
+    let cancel = session.cancel_token().clone();
+    match session.db.execute_session_batch_sql_multi(session_id, sql, &cancel) {
         Ok(results) => {
             let count = results.len();
             let mut b = PacketBuilder::with_capacity(4096);
@@ -98,7 +100,8 @@ pub(crate) async fn execute_sql<W: AsyncWriteExt + Unpin>(
                 tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
             }
 
-            let _ = packet::write_packet(writer, TABULAR_RESULT, b.as_bytes()).await;
+            let ps = session.packet_size();
+            let _ = packet::write_packet(writer, TABULAR_RESULT, b.as_bytes(), ps).await;
         }
         Err(e) => {
             log::warn!(
@@ -108,7 +111,8 @@ pub(crate) async fn execute_sql<W: AsyncWriteExt + Unpin>(
                 e
             );
             let err_resp = build_error_response(&e);
-            let _ = packet::write_packet(writer, TABULAR_RESULT, &err_resp.data).await;
+            let ps = session.packet_size();
+            let _ = packet::write_packet(writer, TABULAR_RESULT, &err_resp.data, ps).await;
         }
     }
 
@@ -135,7 +139,8 @@ pub(crate) async fn apply_use_database<W: AsyncWriteExt + Unpin>(
     }
 
     let data = build_use_database_response(&session.database, &old_db);
-    let _ = packet::write_packet(writer, TABULAR_RESULT, &data).await;
+    let ps = session.packet_size();
+    let _ = packet::write_packet(writer, TABULAR_RESULT, &data, ps).await;
     Ok(())
 }
 

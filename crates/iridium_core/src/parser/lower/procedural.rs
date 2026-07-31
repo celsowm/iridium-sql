@@ -392,6 +392,12 @@ pub fn lower_session(session: ast::SessionStatement) -> Result<executor_ast::Sta
                             executor_ast::SessionOption::StatisticsTime
                         }
                         ast::SessionOption::ShowplanAll => executor_ast::SessionOption::ShowplanAll,
+                        ast::SessionOption::ShowplanXml => {
+                            executor_ast::SessionOption::ShowplanXml
+                        }
+                        ast::SessionOption::StatisticsXml => {
+                            executor_ast::SessionOption::StatisticsXml
+                        }
                         ast::SessionOption::AnsiDefaults => {
                             executor_ast::SessionOption::AnsiDefaults
                         }

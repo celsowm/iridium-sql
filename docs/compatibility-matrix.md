@@ -4,12 +4,24 @@
 
 This document is the current compatibility scoreboard for the project.
 
-Status values:
+## Status values
 
 - `exact`: intended SQL Server-equivalent behavior is implemented and covered
 - `compatible subset`: useful support exists, but the surface or semantics are still incomplete
 - `shim`: behavior exists mainly to satisfy tooling or client compatibility, not as a full implementation
 - `unsupported`: not implemented for the supported scope
+
+This matrix is the user-facing scoreboard. For the per-axis breakdown
+(`Lexical | Parser | Execution | Metadata | TDS client | Differential parity`)
+that explains *which axis* is the bottleneck behind each row, see
+`docs/sql-server-2025-implementation-status.md`. The two documents are kept
+deliberately separate: a keyword may be lexically reserved by the parser
+(`Lexical: ✅`) while its statement is rejected at execution time
+(`Execution: ❌`) — that case is reported as `unsupported` here and as
+`Lexical: ✅ / Execution: ❌` there. A historical version of the status doc
+previously labeled such cases `✅ Implemented`, which this matrix never
+endorsed; the contradiction is closed by the status doc revision and the
+clarification note at the top of `docs/roadmap.md`'s changelog.
 
 The baseline below is seeded from the current README, tests, and explicit code-level limitations. It should be updated alongside feature work.
 
@@ -105,7 +117,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 | Area | Status | Notes | Evidence |
 |---|---|---|---|
 | Playground server for local tooling | shim | Useful for compatibility testing, not a SQL Server-equivalent admin surface | `README.md`, `crates/iridium_server/src/playground/*`, `scripts/start-playground-sa.ps1` |
-| Backup / restore | unsupported | No implementation present | aggregate repo state |
+| Backup / restore | unsupported | No implementation present. `BACKUP`/`RESTORE` are lexically reserved (`parser/token/keyword.rs:`) but `phase7_admin_classification.rs` asserts execution fails; see `docs/sql-server-2025-implementation-status.md` for the per-axis breakdown | aggregate repo state, `crates/iridium_core/tests/phase7_admin_classification.rs` |
 | SQL Agent | unsupported | No implementation present | aggregate repo state |
 | Linked servers | unsupported | No implementation present | aggregate repo state |
 | Service Broker | unsupported | No implementation present | aggregate repo state |

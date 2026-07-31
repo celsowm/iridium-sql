@@ -1,5 +1,6 @@
 use crate::ast::{DmlStatement, IsolationLevel, Statement};
 use crate::error::{DbError, StmtOutcome, StmtResult};
+use crate::types::{DataType, Value};
 
 use super::super::clock::{Clock, SystemClock};
 use super::super::context::ExecutionContext;
@@ -193,6 +194,18 @@ where
     if session_options.noexec {
         if let Statement::Dml(DmlStatement::Select(select_stmt)) = &stmt {
             return execute_fmt_only_select(state, select_stmt, ctx);
+        }
+    }
+
+    if session_options.showplan_xml {
+        if let Statement::Dml(DmlStatement::Select(_)) = &stmt {
+            return execute_showplan_xml(&stmt);
+        }
+    }
+
+    if session_options.statistics_xml {
+        if let Statement::Dml(DmlStatement::Select(_)) = &stmt {
+            return execute_statistics_xml(&stmt, ctx);
         }
     }
 
@@ -400,4 +413,44 @@ where
     };
 
     Ok(StmtOutcome::Ok(Some(result)))
+}
+
+fn showplan_xml_for_stmt(_stmt: &Statement, include_stats: bool) -> String {
+    let stmt_id = 1u32;
+    let estimated_rows = 1u64;
+    let estimated_io = 0.0;
+    let estimated_cpu = 0.001;
+    let estimated_subtree_cost = 0.001;
+    let elapsed = if include_stats { 0.0 } else { 0.0 };
+
+    format!(
+        r#"<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.2" Build="16.0.0.0"><BatchSequence><Batch><CompiledPlan><QueryPlan CachedPlanSize="8" CompileTime="0" CompileCPU="0" CompileMemory="0"><RelOp NodeId="0" PhysicalOp="TableScan" LogicalOp="Table Scan" EstimateRows="{estimated_rows}" EstimateIO="{estimated_io}" EstimateCPU="{estimated_cpu}" AvgRowSize="0" EstimatedTotalSubtreeCost="{estimated_subtree_cost}" EstimatedExecutionMode="Row" Parallel="0" EstimateRebinds="0"><OutputList><ColumnReference Database="" Schema="" Table="" Column="*" /></OutputList><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="0" Batches="0" ActualExecutionTimems="{elapsed}" /></RunTimeInformation></RelOp></QueryPlan></CompiledPlan><Statements><StmtSimple StatementText="" StatementId="{stmt_id}" StatementType="SELECT" StatementSubTreeCost="{estimated_subtree_cost}" StatementEstRows="{estimated_rows}" /></Statements></Batch></BatchSequence></ShowPlanXML>"#
+    )
+}
+
+fn execute_showplan_xml(stmt: &Statement) -> StmtResult<Option<QueryResult>> {
+    let xml = showplan_xml_for_stmt(stmt, false);
+    Ok(StmtOutcome::Ok(Some(QueryResult {
+        columns: vec!["Microsoft SQL Server 2005 XML Showplan".to_string()],
+        column_types: vec![DataType::NVarChar { max_len: u16::MAX }],
+        column_nullabilities: vec![false],
+        rows: vec![vec![Value::NVarChar(xml)]],
+        return_status: None,
+        is_procedure: false,
+    })))
+}
+
+fn execute_statistics_xml(
+    stmt: &Statement,
+    _ctx: &ExecutionContext,
+) -> StmtResult<Option<QueryResult>> {
+    let xml = showplan_xml_for_stmt(stmt, true);
+    Ok(StmtOutcome::Ok(Some(QueryResult {
+        columns: vec!["Microsoft SQL Server 2005 XML Statistics".to_string()],
+        column_types: vec![DataType::NVarChar { max_len: u16::MAX }],
+        column_nullabilities: vec![false],
+        rows: vec![vec![Value::NVarChar(xml)]],
+        return_status: None,
+        is_procedure: false,
+    })))
 }

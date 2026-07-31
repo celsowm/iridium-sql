@@ -2,197 +2,236 @@
 
 This document tracks the implementation status of SQL Server 2025 features in Iridium SQL.
 
+## How to read these tables
+
+Earlier revisions of this document used a single `Status` column whose values
+were `✅ Implemented` / `❌ Pending`. That collapsed six distinct parity axes
+into one label, which produced contradictions with `docs/compatibility-matrix.md`
+and with the executable contract tests.
+
+For example, `BACKUP` and `RESTORE` are registered as token variants in
+`crates/iridium_core/src/parser/token/keyword.rs:325-326`, so the lexer
+recognizes them and rejects them as identifiers. There is *no* parser
+production for the statements, *no* executor handler, and the contract test
+`crates/iridium_core/tests/phase7_admin_classification.rs` explicitly asserts
+both must fail at execution. The previous table labeled these keywords
+`✅ Implemented`, contradicting both `compatibility-matrix.md` (which says
+`unsupported`) and the test (which asserts rejection).
+
+To stop that conflation, each row now records status along the six axes that
+matter for compatibility:
+
+| Axis | Meaning | Source of truth |
+| :--- | :--- | :--- |
+| `Lexical` | Token is recognized by the lexer (reserved as a keyword). | `crates/iridium_core/src/parser/token/keyword.rs` |
+| `Parser` | A grammar production consumes the keyword into a real AST node. | `crates/iridium_core/src/parser/parse/**` |
+| `Execution` | An executor handler turns that AST node into engine behavior. | `crates/iridium_core/src/executor/**` |
+| `Metadata` | Catalog / `sys.*` / `INFORMATION_SCHEMA` rows describe the construct. | `crates/iridium_core/src/executor/metadata/**` |
+| `TDS client` | The TDS layer exposes the construct to clients (SSMS, ADS, vscode-mssql, …). | `crates/iridium_server/src/tds/**` |
+| `Differential parity` | The behavior matches SQL Server under the differential harness. | `scripts/compat-runner/**`, `tests/vscode_mssql/**` |
+
+Refer to `docs/compatibility-matrix.md` for the user-facing status (`exact`,
+`compatible subset`, `shim`, `unsupported`). The per-axis rows below tell you
+*which axis* is the bottleneck when the matrix says `subset` or `unsupported`.
+
+Cells use:
+
+- `✅` — supported for that axis
+- `❌` — not supported
+- `—` — not applicable (e.g. `BACKUP` has no `Metadata` axis)
+- `📝` — partial / needs verification / pinned in backlog
+
 ## Reserved Keywords (Section 1)
 
-| Keyword | Status |
-| :--- | :--- |
-| ADD | ✅ Implemented |
-| ALL | ✅ Implemented |
-| ALTER | ✅ Implemented |
-| AND | ✅ Implemented |
-| ANY | ✅ Implemented |
-| AS | ✅ Implemented |
-| ASC | ✅ Implemented |
-| AUTHORIZATION | ✅ Implemented |
-| BACKUP | ✅ Implemented |
-| BEGIN | ✅ Implemented |
-| BETWEEN | ✅ Implemented |
-| BREAK | ✅ Implemented |
-| BROWSE | ✅ Implemented |
-| BULK | ✅ Implemented |
-| BY | ✅ Implemented |
-| CASCADE | ✅ Implemented |
-| CASE | ✅ Implemented |
-| CHECK | ✅ Implemented |
-| CHECKPOINT | ✅ Implemented |
-| CLOSE | ✅ Implemented |
-| CLUSTERED | ✅ Implemented |
-| COALESCE | ✅ Implemented |
-| COLLATE | ✅ Implemented |
-| COLUMN | ✅ Implemented |
-| COMMIT | ✅ Implemented |
-| COMPUTE | ❌ Pending |
-| CONSTRAINT | ✅ Implemented |
-| CONTAINS | ❌ Pending |
-| CONTAINSTABLE | ❌ Pending |
-| CONTINUE | ✅ Implemented |
-| CONVERT | ✅ Implemented |
-| CREATE | ✅ Implemented |
-| CROSS | ✅ Implemented |
-| CURRENT | ✅ Implemented |
-| CURRENT_DATE | ✅ Implemented |
-| CURRENT_TIME | ✅ Implemented |
-| CURRENT_TIMESTAMP | ✅ Implemented |
-| CURRENT_USER | ✅ Implemented |
-| CURSOR | ✅ Implemented |
-| DATABASE | ✅ Implemented |
-| DBCC | ❌ Pending |
-| DEALLOCATE | ✅ Implemented |
-| DECLARE | ✅ Implemented |
-| DEFAULT | ✅ Implemented |
-| DELETE | ✅ Implemented |
-| DENY | ❌ Pending |
-| DESC | ✅ Implemented |
-| DISK | ❌ Pending |
-| DISTINCT | ✅ Implemented |
-| DISTRIBUTED | ✅ Implemented |
-| DOUBLE | ✅ Implemented |
-| DROP | ✅ Implemented |
-| DUMP | ❌ Pending |
-| ELSE | ✅ Implemented |
-| END | ✅ Implemented |
-| ERRLVL | ❌ Pending |
-| ESCAPE | ✅ Implemented |
-| EXCEPT | ✅ Implemented |
-| EXEC | ✅ Implemented |
-| EXECUTE | ✅ Implemented |
-| EXISTS | ✅ Implemented |
-| EXIT | ❌ Pending |
-| EXTERNAL | ❌ Pending |
-| FETCH | ✅ Implemented |
-| FILE | ❌ Pending |
-| FILLFACTOR | ✅ Implemented |
-| FOR | ✅ Implemented |
-| FOREIGN | ✅ Implemented |
-| FREETEXT | ❌ Pending |
-| FREETEXTTABLE | ❌ Pending |
-| FROM | ✅ Implemented |
-| FULL | ✅ Implemented |
-| FUNCTION | ✅ Implemented |
-| GOTO | ❌ Pending |
-| GRANT | ❌ Pending |
-| GROUP | ✅ Implemented |
-| HAVING | ✅ Implemented |
-| HOLDLOCK | ✅ Implemented |
-| IDENTITY | ✅ Implemented |
-| IDENTITYCOL | ✅ Implemented |
-| IDENTITY_INSERT | ✅ Implemented |
-| IF | ✅ Implemented |
-| IN | ✅ Implemented |
-| INDEX | ✅ Implemented |
-| INNER | ✅ Implemented |
-| INSERT | ✅ Implemented |
-| INTERSECT | ✅ Implemented |
-| INTO | ✅ Implemented |
-| IS | ✅ Implemented |
-| JOIN | ✅ Implemented |
-| KEY | ✅ Implemented |
-| KILL | ✅ Implemented |
-| LEFT | ✅ Implemented |
-| LIKE | ✅ Implemented |
-| LINENO | ❌ Pending |
-| LOAD | ❌ Pending |
-| MERGE | ✅ Implemented |
-| NATIONAL | ✅ Implemented |
-| NOCHECK | ❌ Pending |
-| NONCLUSTERED | ✅ Implemented |
-| NOT | ✅ Implemented |
-| NULL | ✅ Implemented |
-| NULLIF | ✅ Implemented |
-| OF | ✅ Implemented |
-| OFF | ✅ Implemented |
-| OFFSETS | ❌ Pending |
-| ON | ✅ Implemented |
-| OPEN | ✅ Implemented |
-| OPENDATASOURCE | ❌ Pending |
-| OPENQUERY | ❌ Pending |
-| OPENROWSET | ❌ Pending |
-| OPENXML | ❌ Pending |
-| OPTION | ❌ Pending |
-| OR | ✅ Implemented |
-| ORDER | ✅ Implemented |
-| OUTER | ✅ Implemented |
-| OVER | ✅ Implemented |
-| PERCENT | ❌ Pending |
-| PIVOT | ✅ Implemented |
-| PLAN | ❌ Pending |
-| PRECISION | ✅ Implemented |
-| PRIMARY | ✅ Implemented |
-| PRINT | ✅ Implemented |
-| PROC | ✅ Implemented |
-| PROCEDURE | ✅ Implemented |
-| PUBLIC | ❌ Pending |
-| RAISERROR | ✅ Implemented |
-| READ | ✅ Implemented |
-| READTEXT | ❌ Pending |
-| RECONFIGURE | ❌ Pending |
-| REFERENCES | ✅ Implemented |
-| REPLICATION | ❌ Pending |
-| RESTORE | ✅ Implemented |
-| RESTRICT | ❌ Pending |
-| RETURN | ✅ Implemented |
-| REVERT | ❌ Pending |
-| REVOKE | ❌ Pending |
-| RIGHT | ✅ Implemented |
-| ROLLBACK | ✅ Implemented |
-| ROWCOUNT | ✅ Implemented |
-| ROWGUIDCOL | ❌ Pending |
-| RULE | ❌ Pending |
-| SAVE | ✅ Implemented |
-| SCHEMA | ✅ Implemented |
-| SECURITYAUDIT | ❌ Pending |
-| SELECT | ✅ Implemented |
-| SEMANTICKEYPHRASETABLE | ❌ Pending |
-| SEMANTICSIMILARITYDETAILSTABLE | ❌ Pending |
-| SEMANTICSIMILARITYTABLE | ❌ Pending |
-| SESSION_USER | ✅ Implemented |
-| SET | ✅ Implemented |
-| SETUSER | ❌ Pending |
-| SHUTDOWN | ✅ Implemented |
-| SOME | ✅ Implemented |
-| STATISTICS | ✅ Implemented |
-| SYSTEM_USER | ✅ Implemented |
-| TABLE | ✅ Implemented |
-| TABLESAMPLE | ❌ Pending |
-| TEXTSIZE | ✅ Implemented |
-| THEN | ✅ Implemented |
-| TO | ❌ Pending |
-| TOP | ✅ Implemented |
-| TRAN | ✅ Implemented |
-| TRANSACTION | ✅ Implemented |
-| TRIGGER | ✅ Implemented |
-| TRUNCATE | ✅ Implemented |
-| TRY_CONVERT | ✅ Implemented |
-| TSEQUAL | ❌ Pending |
-| UNION | ✅ Implemented |
-| UNIQUE | ✅ Implemented |
-| UNPIVOT | ✅ Implemented |
-| UPDATE | ✅ Implemented |
-| UPDATETEXT | ❌ Pending |
-| USE | ✅ Implemented |
-| USER | ✅ Implemented |
-| VALUES | ✅ Implemented |
-| VARYING | ✅ Implemented |
-| VIEW | ✅ Implemented |
-| WAITFOR | ❌ Pending |
-| WHEN | ✅ Implemented |
-| WHERE | ✅ Implemented |
-| WHILE | ✅ Implemented |
-| WITH | ✅ Implemented |
-| WITHIN | ✅ Implemented |
-| WRITETEXT | ❌ Pending |
+| Keyword | Lexical | Parser | Execution | Metadata | TDS client | Differential | Notes |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| ADD | ✅ | ✅ | ✅ | — | ✅ | 📝 | `ALTER TABLE … ADD` column |
+| ALL | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ALTER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| AND | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ANY | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| AS | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ASC | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| AUTHORIZATION | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| BACKUP | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexically reserved only. `phase7_admin_classification.rs` asserts execution fails. See `compatibility-matrix.md` row "Backup / restore". |
+| BEGIN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| BETWEEN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| BREAK | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| BROWSE | ✅ | ❌ | ❌ | — | ❌ | ❌ | Reserved only; T-SQL `BROWSE FOR` is not implemented. |
+| BULK | ✅ | ✅ | 📝 | — | 📝 | 📝 | `BULK INSERT` is a shim that converts rows into individual `INSERT` statements; no native bulk load path. See `compatibility-matrix.md` "Flat-file import". |
+| BY | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CASCADE | ✅ | ✅ | ✅ | 📝 | ✅ | 📝 | |
+| CASE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CHECK | ✅ | ✅ | ✅ | 📝 | ✅ | 📝 | `CHECK` constraints parsed and enforced for new rows; metadata visibility is partial. |
+| CHECKPOINT | ✅ | ✅ | ✅ | — | ✅ | 📝 | WAL/checkpoint engine has its own checkpoint semantics; not 1:1 with SQL Server's `CHECKPOINT`. |
+| CLOSE | ✅ | ✅ | ✅ | — | ✅ | 📝 | Cursors. |
+| CLUSTERED | ✅ | ✅ | 📝 | ✅ | 📝 | 📝 | Index cluster flag parsed and cataloged; storage engine is not B-tree clustered. |
+| COALESCE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| COLLATE | ✅ | 📝 | 📝 | 📝 | 📝 | ❌ | Parser accepts the clause; the actual collation is *not* enforced and *not* propagated to the wire (COLMETADATA uses a fixed `Latin1_General_CI_AS`). See `compatibility-matrix.md` "Full collation and type-fidelity behavior". |
+| COLUMN | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| COMMIT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| COMPUTE | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; T-SQL `COMPUTE BY` is not implemented. |
+| CONSTRAINT | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| CONTAINS | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; full-text not implemented. |
+| CONTAINSTABLE | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Lexer-only; full-text not implemented. |
+| CONTINUE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CONVERT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CREATE | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| CROSS | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CURRENT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CURRENT_DATE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CURRENT_TIME | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CURRENT_TIMESTAMP | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CURRENT_USER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| CURSOR | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| DATABASE | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| DBCC | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| DEALLOCATE | ✅ | ✅ | ✅ | — | ✅ | 📝 | Cursors. |
+| DECLARE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| DEFAULT | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| DELETE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| DENY | ✅ | ❌ | ❌ | 📝 | ❌ | ❌ | Lexer-only; permission enforcement is not implemented. Catalog shim rows exist for `sys.database_permissions`. See `compatibility-matrix.md` "Principals, roles, grants, deny, revoke". |
+| DESC | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| DISK | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; `DISK` device commands are not implemented. |
+| DISTINCT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| DISTRIBUTED | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| DOUBLE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| DROP | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| DUMP | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| ELSE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| END | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ERRLVL | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| ESCAPE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| EXCEPT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| EXEC | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| EXECUTE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| EXISTS | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| EXIT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only (control-flow `EXIT` not implemented; recognized for compatibility lexical reservation). |
+| EXTERNAL | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; external assemblies / SQLCLR not implemented. |
+| FETCH | ✅ | ✅ | ✅ | — | ✅ | 📝 | Cursors. |
+| FILE | ✅ | ❌ | ❌ | 📝 | ❌ | ❌ | Lexer-only. `sys.database_files` partial metadata exists. |
+| FILLFACTOR | ✅ | ✅ | 📝 | ✅ | 📝 | 📝 | Index option parsed and cataloged; not honored by the BTree storage layer. |
+| FOR | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| FOREIGN | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| FREETEXT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; full-text. |
+| FREETEXTTABLE | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Lexer-only; full-text. |
+| FROM | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| FULL | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| FUNCTION | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | Subset of T-SQL function features. |
+| GOTO | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| GRANT | ✅ | ❌ | ❌ | 📝 | ❌ | ❌ | Lexer-only; see `DENY` row. |
+| GROUP | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| HAVING | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| HOLDLOCK | ✅ | ✅ | 📝 | — | 📝 | 📝 | Hint accepted; isolation mapping is partial. |
+| IDENTITY | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| IDENTITYCOL | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| IDENTITY_INSERT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| IF | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| IN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| INDEX | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| INNER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| INSERT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| INTERSECT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| INTO | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| IS | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| JOIN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| KEY | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| KILL | ✅ | ✅ | 📝 | — | ✅ | 📝 | Subset: `KILL <spid>` is recognized; `KILL STATS`/`KILL UOW` are stubs. |
+| LEFT | ✅ | ✅ | ✅ | — | ✅ | 📝 | String `LEFT` and join `LEFT`. |
+| LIKE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| LINENO | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| LOAD | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| MERGE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| NATIONAL | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| NOCHECK | ✅ | 📝 | 📝 | ✅ | 📝 | 📝 | Recognized in `ALTER TABLE … WITH NOCHECK`; full constraint-skip semantics not complete. |
+| NONCLUSTERED | ✅ | ✅ | 📝 | ✅ | 📝 | 📝 | Like `CLUSTERED`. |
+| NOT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| NULL | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| NULLIF | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| OF | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| OFF | ✅ | ✅ | ✅ | — | ✅ | 📝 | SET option `... OFF`. |
+| OFFSETS | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| ON | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| OPEN | ✅ | ✅ | ✅ | — | ✅ | 📝 | Cursors. |
+| OPENDATASOURCE | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; linked servers not implemented. |
+| OPENQUERY | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; linked servers not implemented. |
+| OPENROWSET | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| OPENXML | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| OPTION | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; query hints not implemented. |
+| OR | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ORDER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| OUTER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| OVER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| PERCENT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; `TOP … PERCENT` not implemented. |
+| PIVOT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| PLAN | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; `SET SHOWPLAN` etc. not implemented (see `tests/vscode_mssql` track W3.3). |
+| PRECISION | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| PRIMARY | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| PRINT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| PROC | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| PROCEDURE | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| PUBLIC | ✅ | ❌ | ❌ | 📝 | ❌ | ❌ | Lexer-only; security role `PUBLIC` is not enforced. |
+| RAISERROR | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| READ | ✅ | 📝 | 📝 | — | 📝 | 📝 | Recognized in `WITH (READ*)` hints; isolation mapping is partial. |
+| READTEXT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| RECONFIGURE | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| REFERENCES | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| REPLICATION | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; replication not implemented. |
+| RESTORE | ✅ | ❌ | ❌ | — | ❌ | ❌ | Same as `BACKUP` — lexically reserved only; `phase7_admin_classification.rs` asserts execution fails. |
+| RESTRICT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| RETURN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| REVERT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; `EXECUTE AS REVERT` not implemented. |
+| REVOKE | ✅ | ❌ | ❌ | 📝 | ❌ | ❌ | Lexer-only; see `DENY`. |
+| RIGHT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ROLLBACK | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ROWCOUNT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| ROWGUIDCOL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Lexer-only. |
+| RULE | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Lexer-only; legacy `RULE` objects not implemented. |
+| SAVE | ✅ | ✅ | ✅ | — | ✅ | 📝 | Savepoints. |
+| SCHEMA | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| SECURITYAUDIT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| SELECT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| SEMANTICKEYPHRASETABLE | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Lexer-only; semantic search not implemented. |
+| SEMANTICSIMILARITYDETAILSTABLE | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Lexer-only; semantic search not implemented. |
+| SEMANTICSIMILARITYTABLE | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Lexer-only; semantic search not implemented. |
+| SESSION_USER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| SET | ✅ | ✅ | ✅ | — | ✅ | 📝 | Subset of SET options; unsupported options fall through to `DbError::Unsupported` per backlog `B020`. |
+| SETUSER | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| SHUTDOWN | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; shutdown is not implemented. The previous table labeled this `✅ Implemented` on the basis of token recognition alone, which is the same conflation noted for `BACKUP`/`RESTORE`. |
+| SOME | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| STATISTICS | ✅ | 📝 | 📝 | — | ❌ | ❌ | `STATISTICS IO`/`STATISTICS TIME` are accepted; `STATISTICS XML` is not produced (see `tests/vscode_mssql` track W3.3). |
+| SYSTEM_USER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| TABLE | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| TABLESAMPLE | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| TEXTSIZE | ✅ | ✅ | 📝 | — | ✅ | 📝 | Parsed; effect is not enforced on routing text-size clamp. |
+| THEN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| TO | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| TOP | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| TRAN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| TRANSACTION | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| TRIGGER | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| TRUNCATE | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| TRY_CONVERT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| TSEQUAL | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| UNION | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| UNIQUE | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| UNPIVOT | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| UPDATE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| UPDATETEXT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
+| USE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| USER | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| VALUES | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| VARYING | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| VIEW | ✅ | ✅ | ✅ | ✅ | ✅ | 📝 | |
+| WAITFOR | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only; wait semantics not implemented. |
+| WHEN | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| WHERE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| WHILE | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| WITH | ✅ | ✅ | ✅ | — | ✅ | 📝 | |
+| WITHIN | ✅ | ✅ | ✅ | — | ✅ | 📝 | XML/JSON path. |
+| WRITETEXT | ✅ | ❌ | ❌ | — | ❌ | ❌ | Lexer-only. |
 
-**Summary:** 134/185 (72.4%)
+**Summary:** Lexical 185/185 (100%). Parser/Execution/TDS axes vary row-by-row; see the matrix for the usable-surface summary. Treat the previous "134/185 (72.4%) Implemented" summary as withdrawn — it was the conflation this revision corrects.
 
 ## System Stored Procedures (`sp_*`)
 

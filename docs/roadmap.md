@@ -484,19 +484,25 @@ Suggested status fields:
 
 ## Changelog
 
+### Scope clarification (2026-07-30)
+
+A reader flagged that several historical changelog entries below advertised phases as `COMPLETE` in a way that read as feature parity, when the underlying deliverable was narrower (usually catalog shims + explicit classification of unsupported features). To stop that reading, each "Phase N: COMPLETE" line below is now parenthesized with the actual scope of completeness. The phase exit criteria in the body of this document remain the source of truth; the changelog entries are only retrospective markers.
+
+Concretely, `Phase 7 (Admin): COMPLETE` previously read as if backup/restore were implemented; the parenthetical now clarifies it means *classification of these features as explicitly unsupported, plus the catalog shims noted*. `BACKUP` and `RESTORE` keywords are similarly re-classified in `docs/sql-server-2025-implementation-status.md` as `Lexical: ✅ | Parser: ❌ | Execution: ❌ | TDS client: ❌ | Differential: ❌`, matching the assertion in `crates/iridium_core/tests/phase7_admin_classification.rs` that both must fail.
+
 ### 2026-04-13: Current Status - Major Milestone Achieved ✅
 
 **Phase Progress:**
 
 - **Phase 0 (Freeze Target)**: COMPLETE - Compatibility matrix and backlog maintained
-- **Phase 1 (Core Language)**: COMPLETE - Full CAST/CONVERT/TRY_CAST/TRY_CONVERT coverage, 20+ SET options with runtime, TVP (multi-column, READONLY, error handling), migration patterns, type coercion
-- **Phase 2 (Metadata)**: COMPLETE - INFORMATION_SCHEMA, sys.* views, SSMS Object Explorer contract (58 cases), database principals, permissions, role members, sys.all_objects, sys.identity_columns, sys.computed_columns, sys.sql_expression_dependencies, metadata snapshot tests
-- **Phase 3 (TDS/Protocol)**: COMPLETE - Login/prelogin, sp_executesql, sp_prepexec, cursor RPCs, TLS, error handling, catalog procedures (sp_tables, sp_columns, sp_pkeys, sp_sproc_columns) via SQL batch and RPC
-- **Phase 4 (Transactions)**: COMPLETE - Row locking, MVCC, savepoints, nested transactions, XACT_STATE, deadlock detection, isolation levels, implicit transactions, variable/temp table/identity rollback
-- **Phase 5 (Physical Engine)**: COMPLETE - BTreeIndex storage (seek, scan, range), checkpoint import/export (tables, indexes, views, procedures, transactions), planner index usage, composite indexes, multiple indexes per table
-- **Phase 6 (Security)**: COMPLETE - SUSER_SNAME/SUSER_ID, USER_NAME/USER_ID, APP_NAME, HOST_NAME, DB_NAME/DB_ID, sys.database_principals, sys.database_permissions, sys.database_role_members, sys.server_principals
-- **Phase 7 (Admin)**: COMPLETE - Classification of backup/restore, SQL Agent, Service Broker, partitioning as explicitly unsupported. sys.filegroups, sys.databases, @@VERSION working.
-- **Phase 8 (Hardening)**: COMPLETE - Parser exists, regression corpus (14 tests), STRING_AGG, CTE, MERGE, PIVOT, window functions, subqueries, UNION, EXISTS, LIKE
+- **Phase 1 (Core Language)**: COMPLETE — (CAST/CONVERT/TRY_CAST/TRY_CONVERT coverage, 20+ SET options with runtime, TVP, migration patterns, type coercion. Subset, not full T-SQL surface.)
+- **Phase 2 (Metadata)**: COMPLETE — (INFORMATION_SCHEMA, sys.* views, SSMS Object Explorer contract (58 cases), database principal/permission/role-member catalog rows, sys.all_objects, sys.identity_columns, sys.computed_columns, sys.sql_expression_dependencies stub, metadata snapshot tests. Catalog stubs and shims; cross-object dependencies and partitioning/HADR are shims or empty per `compatibility-matrix.md`.)
+- **Phase 3 (TDS/Protocol)**: COMPLETE — (Login/prelogin, sp_executesql, sp_prepexec, cursor RPCs, TLS, error handling, catalog procedures via SQL batch and RPC. Differential parity vs SQL Server is `compatible subset`; ADO.NET/ODBC/JDBC axes are `unsupported` except for `ado_test` smoke coverage.)
+- **Phase 4 (Transactions)**: COMPLETE — (Row locking, MVCC, savepoints, nested transactions, XACT_STATE, deadlock detection, isolation levels, implicit transactions, variable/temp table/identity rollback. Differential concurrency parity is `compatible subset`, not exact; see backlog `B010`.)
+- **Phase 5 (Physical Engine)**: COMPLETE — (BTreeIndex storage (seek, scan, range), checkpoint import/export, planner index usage, composite indexes, multiple indexes per table. Cost-based optimization and statistics are still `unsupported` per `compatibility-matrix.md`.)
+- **Phase 6 (Security)**: COMPLETE — (SUSER_SNAME/SUSER_ID, USER_NAME/USER_ID, APP_NAME, HOST_NAME, DB_NAME/DB_ID, sys.database_principals, sys.database_permissions, sys.database_role_members, sys.server_principals. This is the catalog-shim subset; permission **enforcement** and metadata visibility filters are `unsupported` per `compatibility-matrix.md` and backlog `B013`/`B014`.)
+- **Phase 7 (Admin)**: COMPLETE — (Scope: classification of backup/restore, SQL Agent, Service Broker, partitioning as *explicitly unsupported*, plus catalog shims `sys.filegroups`, `sys.databases`, `@@VERSION`. Backup/restore themselves are *not* implemented; `phase7_admin_classification.rs` asserts they fail. See `docs/sql-server-2025-implementation-status.md` for the per-axis breakdown.)
+- **Phase 8 (Hardening)**: COMPLETE — (Parser regression corpus and selected hardening. Parser fuzz, TDS fuzz, and soak suites remain `planned` per backlog `B016`/`B017`.)
 
 **Test Coverage:**
 - 1255+ tests in iridium_core (now ~1315 with all new test files)
