@@ -1,0 +1,126 @@
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "tests/docker-smoke/**"
+      - ".github/workflows/docker-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: iridium-sql:ci
+
+      - name: Start persistent container
+        run: |
+          docker volume create iridium-ci-data
+          docker run -d --name iridium-docker-smoke \
+            -p 127.0.0.1:14330:1433 \
+            -v iridium-ci-data:/var/lib/iridium \
+            iridium-sql:ci
+
+      - name: Wait for Docker health check
+        run: |
+          for attempt in $(seq 1 45); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' iridium-docker-smoke)
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              docker logs iridium-docker-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs iridium-docker-smoke
+          exit 1
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Query persistent container via TDS
+        run: dotnet run --project tests/docker-smoke/docker-smoke.csproj -- 14330
+
+      - name: Start ephemeral container
+        run: |
+          docker run -d --name iridium-docker-memory \
+            -p 127.0.0.1:14331:1433 \
+            iridium-sql:ci --memory
+
+      - name: Wait for ephemeral container
+        run: |
+          for attempt in $(seq 1 45); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' iridium-docker-memory)
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              docker logs iridium-docker-memory
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs iridium-docker-memory
+          exit 1
+
+      - name: Query ephemeral container via TDS
+        run: dotnet run --no-restore --project tests/docker-smoke/docker-smoke.csproj -- 14331
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish verified image
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            docker tag iridium-sql:ci "$image:latest"
+            docker tag iridium-sql:ci "$image:sha-${GITHUB_SHA:0:12}"
+            docker push "$image:latest"
+            docker push "$image:sha-${GITHUB_SHA:0:12}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            docker tag iridium-sql:ci "$image:${GITHUB_REF_NAME}"
+            docker push "$image:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Remove test containers and volume
+        if: always()
+        run: |
+          docker rm -f iridium-docker-smoke iridium-docker-memory 2>/dev/null || true
+          docker volume rm iridium-ci-data 2>/dev/null || true

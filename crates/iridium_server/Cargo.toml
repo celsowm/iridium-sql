@@ -39,3 +39,7 @@ path = "bin/main.rs"
 [[bin]]
 name = "compat-query"
 path = "bin/compat-query.rs"
+
+[[bin]]
+name = "iridium-healthcheck"
+path = "bin/healthcheck.rs"

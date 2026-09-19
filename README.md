@@ -45,6 +45,8 @@ Build the WASM package:
 wasm-pack build crates/iridium_wasm --target web --out-dir crates/iridium_wasm/pkg
 ```
 
+For Docker, image publishing, and Testcontainers integration, see the [Docker guide](docs/docker.md).
+
 ## Minimal Example
 
 ```ts

@@ -14,9 +14,10 @@ services:
   iridium-playground:
     build:
       context: .
-      dockerfile: Dockerfile.playground
+      dockerfile: Dockerfile
     ports:
-      - "14330:1433"
+      - "127.0.0.1:14330:1433"
+    command: ["--playground", "--memory"]
     mem_limit: 256m
     restart: unless-stopped
     profiles:
