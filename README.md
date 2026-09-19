@@ -1,5 +1,7 @@
 # Iridium SQL
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/L4L11VB7JN)
+
 An open SQL Server-compatible database engine with native persistence by default and WASM support for embedding.
 
 Iridium SQL is an independent Rust implementation built for application-facing compatibility, local-first persistence, and predictable behavior across native, server, and WASM runtimes.
