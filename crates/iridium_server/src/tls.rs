@@ -44,10 +44,17 @@ pub fn load_tls_config(cert_path: &str, key_path: &str) -> io::Result<ServerConf
         }
     };
 
-    let config = ServerConfig::builder()
+    let mut config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(vec![cert], private_key)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    // TDS wraps TLS records in PRELOGIN packets only during the initial
+    // handshake. TLS 1.3 session tickets are sent *after* the handshake:
+    // rustls would emit these before the transport switches to raw TLS,
+    // confusing clients that have already left the TDS PRELOGIN framing.
+    // We do not need session resumption for this standalone test server.
+    config.send_tls13_tickets = 0;
 
     Ok(config)
 }
