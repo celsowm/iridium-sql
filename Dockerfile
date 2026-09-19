@@ -14,4 +14,4 @@ WORKDIR /var/lib/iridium
 USER 10001:10001
 EXPOSE 1433
 HEALTHCHECK --interval=3s --timeout=3s --start-period=5s --retries=20 CMD ["/usr/local/bin/iridium-healthcheck"]
-ENTRYPOINT ["/usr/local/bin/iridium-server", "--host", "0.0.0.0", "--port", "1433", "--no-tls", "--data-dir", "/var/lib/iridium"]
+ENTRYPOINT ["/usr/local/bin/iridium-server", "--host", "0.0.0.0", "--port", "1433", "--data-dir", "/var/lib/iridium", "--tls-gen"]

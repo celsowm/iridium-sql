@@ -1,7 +1,7 @@
 using Microsoft.Data.SqlClient;
 
 var port = args.Length > 0 ? args[0] : "14330";
-var connectionString = $"Server=127.0.0.1,{port};Database=master;User Id=sa;Password=test-only;Encrypt=False;TrustServerCertificate=True;Connection Timeout=10;";
+var connectionString = $"Server=127.0.0.1,{port};Database=master;User Id=sa;Password=test-only;Encrypt=True;TrustServerCertificate=True;Connection Timeout=10;";
 
 await using var connection = new SqlConnection(connectionString);
 await connection.OpenAsync();

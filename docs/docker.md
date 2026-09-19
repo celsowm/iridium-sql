@@ -26,13 +26,15 @@ docker run --rm -p 127.0.0.1:1433:1433 iridium-sql:local --memory
 The container listens on `0.0.0.0:1433` internally. Bind the published port
 to `127.0.0.1` on your host to avoid exposing this test server on the network.
 
-**Security:** The image starts without TLS or authentication for simple,
-isolated test use. The server accepts any login while authentication is
-disabled; do not expose it to an untrusted network. A client using
-`Microsoft.Data.SqlClient` should set `Encrypt=False` explicitly. You may
-supply server flags such as `--user sa --password ...` and
-`--tls-cert ... --tls-key ... --tls` if your environment needs them; do not
-place production passwords in container command-line arguments.
+**Security:** The image generates a self-signed certificate at startup and
+starts with TLS enabled, but without authentication for isolated integration
+tests. Set `Encrypt=True;TrustServerCertificate=True` in .NET test clients.
+Trusting a self-signed certificate disables server-certificate validation;
+only use this configuration for isolated tests. The server accepts any login
+while authentication is disabled; do not expose it to an untrusted network.
+You may supply server flags such as `--user sa --password ...` and
+`--tls-cert ... --tls-key ...` if your environment needs them; do not place
+production passwords in container command-line arguments.
 
 ## Persist data
 
@@ -77,7 +79,7 @@ await container.StartAsync();
 var connectionString =
     $"Server={container.Hostname},{container.GetMappedPublicPort(1433)};" +
     "Database=master;User Id=sa;Password=test-only;" +
-    "Encrypt=False;TrustServerCertificate=True;Connection Timeout=10;";
+    "Encrypt=True;TrustServerCertificate=True;Connection Timeout=10;";
 
 await using var connection = new SqlConnection(connectionString);
 await connection.OpenAsync();
