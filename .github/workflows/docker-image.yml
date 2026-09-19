@@ -45,6 +45,7 @@ jobs:
           docker run -d --name iridium-docker-smoke \
             -p 127.0.0.1:14330:1433 \
             -v iridium-ci-data:/var/lib/iridium \
+            -e RUST_LOG=debug \
             iridium-sql:ci
 
       - name: Wait for Docker health check
@@ -69,7 +70,11 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Query persistent container via TDS
-        run: dotnet run --project tests/docker-smoke/docker-smoke.csproj -- 14330
+        run: |
+          dotnet run --project tests/docker-smoke/docker-smoke.csproj -- 14330 || {
+            docker logs iridium-docker-smoke
+            exit 1
+          }
 
       - name: Start ephemeral container
         run: |
@@ -94,7 +99,11 @@ jobs:
           exit 1
 
       - name: Query ephemeral container via TDS
-        run: dotnet run --no-restore --project tests/docker-smoke/docker-smoke.csproj -- 14331
+        run: |
+          dotnet run --no-restore --project tests/docker-smoke/docker-smoke.csproj -- 14331 || {
+            docker logs iridium-docker-memory
+            exit 1
+          }
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
