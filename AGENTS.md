@@ -35,7 +35,7 @@ podman start iridium_test_sqlserver
 - Image: `mcr.microsoft.com/azure-sql-edge:latest`
 - Container Name: `iridium_test_sqlserver`
 - Port: 11433 (host) -> 1433 (container)
-- SA Password: `Test@12345`
+- SQL Server credentials are supplied through `MSSQL_SA_PASSWORD`; keep the value in an ignored local `.env` file or the shell environment, never in tracked files.
 
 **Docker Compose:**
 ```bash
