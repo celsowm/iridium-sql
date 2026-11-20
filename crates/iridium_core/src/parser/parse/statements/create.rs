@@ -25,7 +25,14 @@ pub fn parse_create_view(parser: &mut Parser) -> ParseResult<CreateStmt> {
 pub fn parse_create_procedure(parser: &mut Parser) -> ParseResult<CreateStmt> {
     let name = super::parse_multipart_name(parser)?;
     let mut params = Vec::new();
-    if matches!(parser.peek(), Some(Token::Variable(_))) {
+    if matches!(parser.peek(), Some(Token::LParen)) {
+        let _ = parser.next();
+        params = crate::parser::parse::parse_comma_list(
+            parser,
+            crate::parser::parse::parse_routine_param,
+        )?;
+        parser.expect_rparen()?;
+    } else if matches!(parser.peek(), Some(Token::Variable(_))) {
         params = crate::parser::parse::parse_comma_list(
             parser,
             crate::parser::parse::parse_routine_param,

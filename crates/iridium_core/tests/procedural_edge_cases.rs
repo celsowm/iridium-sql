@@ -154,3 +154,51 @@ fn procedural_nested_while() {
     let r = query(&mut e, "SELECT @total");
     assert_eq!(r.rows[0][0], Value::Int(9));
 }
+
+#[test]
+fn procedural_proc_parenthesized_params_with_defaults_and_output() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE PROCEDURE dbo.add_scaled (@a INT, @out INT OUTPUT, @b INT = 10) AS BEGIN SET @out = @a + @b END",
+    );
+    exec(&mut e, "DECLARE @res INT");
+    e.execute_batch(
+        iridium_core::parse_batch("EXEC dbo.add_scaled @a = 5, @out = @res OUTPUT").unwrap(),
+    )
+    .unwrap();
+    let r = query(&mut e, "SELECT @res");
+    assert_eq!(r.rows[0][0], Value::Int(15));
+
+    exec(
+        &mut e,
+        "CREATE PROC dbo.double_val (@x INT) AS SELECT @x * 2 AS doubled",
+    );
+    let r2 = query(&mut e, "EXEC dbo.double_val @x = 7");
+    assert_eq!(r2.rows[0][0], Value::BigInt(14));
+}
+
+#[test]
+fn procedural_proc_parenthesized_tvp_readonly_param() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TYPE dbo.IntList AS TABLE (id INT)");
+    exec(
+        &mut e,
+        "CREATE PROCEDURE dbo.count_ids (@items dbo.IntList READONLY) AS BEGIN SELECT COUNT(*) AS cnt FROM @items END",
+    );
+    exec(&mut e, "DECLARE @ids TABLE (id INT)");
+    exec(&mut e, "INSERT INTO @ids VALUES (1)");
+    exec(&mut e, "INSERT INTO @ids VALUES (2)");
+    exec(&mut e, "INSERT INTO @ids VALUES (3)");
+    let r = query(&mut e, "EXEC dbo.count_ids @items = @ids");
+    assert_eq!(r.rows[0][0], Value::BigInt(3));
+}
+
+#[test]
+fn procedural_proc_parenthesized_params_rejects_empty_and_unclosed() {
+    assert!(iridium_core::parse_sql("CREATE PROCEDURE dbo.empty_parens () AS SELECT 1").is_err());
+    assert!(iridium_core::parse_sql("CREATE PROCEDURE dbo.unclosed (@a INT AS SELECT @a").is_err());
+    assert!(
+        iridium_core::parse_sql("CREATE PROCEDURE dbo.extra_rparen @a INT) AS SELECT @a").is_err()
+    );
+}
